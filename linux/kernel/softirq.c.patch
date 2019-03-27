@@ -1,0 +1,30 @@
+diff --git a/kernel/softirq.c b/kernel/softirq.c
+index f7fa8963589c..90057168a5be 100644
+--- a/kernel/softirq.c
++++ b/kernel/softirq.c
+@@ -26,6 +26,7 @@
+ #include <linux/smpboot.h>
+ #include <linux/tick.h>
+ #include <linux/irq.h>
++#include <linux/hwiotrace.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/irq.h>
+@@ -278,7 +279,17 @@ restart:
+ 		kstat_incr_softirqs_this_cpu(vec_nr);
+ 
+ 		trace_softirq_entry(vec_nr);
++
++#ifdef CONFIG_HWIOTRACE
++		hwiotrace_task_start();
++#endif
++
+ 		h->action(h);
++
++#ifdef CONFIG_HWIOTRACE
++		hwiotrace_task_end();
++#endif
++
+ 		trace_softirq_exit(vec_nr);
+ 		if (unlikely(prev_count != preempt_count())) {
+ 			pr_err("huh, entered softirq %u %s %p with preempt_count %08x, exited with %08x?\n",

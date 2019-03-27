@@ -1,0 +1,64 @@
+diff --git a/arch/arm64/mm/dma-mapping.c b/arch/arm64/mm/dma-mapping.c
+index 2445db9bbd4f..3d4028e78c98 100644
+--- a/arch/arm64/mm/dma-mapping.c
++++ b/arch/arm64/mm/dma-mapping.c
+@@ -22,6 +22,7 @@
+ #include <linux/export.h>
+ #include <linux/slab.h>
+ #include <linux/genalloc.h>
++#include <linux/hwiotrace.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/dma-contiguous.h>
+ #include <linux/mm.h>
+@@ -302,6 +303,13 @@ static dma_addr_t __swiotlb_map_page(struct device *dev, struct page *page,
+ 	dma_addr_t dev_addr;
+ 
+ 	dev_addr = swiotlb_map_page(dev, page, offset, size, dir, attrs);
++
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_STREAMING_DMA)
++	if (unregister_hwiotrace_probe(dev_name(dev), phys_to_virt(dma_to_phys(dev, dev_addr))) == 0) {
++		//printk("[__swiotlb_map_page] name=%s addr=0x%p size=%zd\n", dev->driver->name, phys_to_virt(dma_to_phys(dev, dev_addr)), size);
++	}
++#endif
++
+ 	if (!is_dma_coherent(dev, attrs))
+ 		__dma_map_area(phys_to_virt(dma_to_phys(dev, dev_addr)), size, dir);
+ 
+@@ -316,6 +324,12 @@ static void __swiotlb_unmap_page(struct device *dev, dma_addr_t dev_addr,
+ 	if (!is_dma_coherent(dev, attrs))
+ 		__dma_unmap_area(phys_to_virt(dma_to_phys(dev, dev_addr)), size, dir);
+ 	swiotlb_unmap_page(dev, dev_addr, size, dir, attrs);
++
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_STREAMING_DMA)
++	if (__register_hwiotrace_probe(dev_name(dev), phys_to_virt(dma_to_phys(dev, dev_addr)), size, true, DMA_STREAM) == 0) {
++		//printk("[__swiotlb_unmap_page] name=%s addr=0x%p size=%zd\n", dev->driver->name, phys_to_virt(dma_to_phys(dev, dev_addr)), size);
++	}
++#endif
+ }
+ 
+ static int __swiotlb_map_sg_attrs(struct device *dev, struct scatterlist *sgl,
+@@ -356,12 +370,24 @@ static void __swiotlb_sync_single_for_cpu(struct device *dev,
+ 	if (!is_device_dma_coherent(dev))
+ 		__dma_unmap_area(phys_to_virt(dma_to_phys(dev, dev_addr)), size, dir);
+ 	swiotlb_sync_single_for_cpu(dev, dev_addr, size, dir);
++
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_STREAMING_DMA)
++	if (__register_hwiotrace_probe(dev_name(dev), phys_to_virt(dma_to_phys(dev, dev_addr)), size, true, DMA_STREAM) == 0) {
++		//printk("[__swiotlb_sync_single_for_cpu] registered name=%s dev_addr=0x%llx phys=0x%llx addr=0x%p size=%zu\n", dev->driver->name, dev_addr, dma_to_phys(dev, dev_addr), phys_to_virt(dma_to_phys(dev, dev_addr)), size);
++	}
++#endif
+ }
+ 
+ static void __swiotlb_sync_single_for_device(struct device *dev,
+ 					     dma_addr_t dev_addr, size_t size,
+ 					     enum dma_data_direction dir)
+ {
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_STREAMING_DMA)
++	if (unregister_hwiotrace_probe(dev_name(dev), phys_to_virt(dma_to_phys(dev, dev_addr))) == 0) {
++		//printk("[__swiotlb_sync_single_for_device] unregistered name=%s dev_addr=0x%llx phys=0x%llx addr=0x%p size=%zu\n", dev->driver->name, dev_addr, dma_to_phys(dev, dev_addr), phys_to_virt(dma_to_phys(dev, dev_addr)), size);
++	}
++#endif
++
+ 	swiotlb_sync_single_for_device(dev, dev_addr, size, dir);
+ 	if (!is_device_dma_coherent(dev))
+ 		__dma_map_area(phys_to_virt(dma_to_phys(dev, dev_addr)), size, dir);

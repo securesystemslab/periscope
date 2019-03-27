@@ -1,0 +1,39 @@
+diff --git a/include/linux/kcov.h b/include/linux/kcov.h
+index 2883ac9..ec0ae66 100644
+--- a/include/linux/kcov.h
++++ b/include/linux/kcov.h
+@@ -7,8 +7,17 @@ struct task_struct;
+ 
+ #ifdef CONFIG_KCOV
+ 
++#ifdef CONFIG_HWIOTRACE
++#define KCOV_MAP_SIZE_POW2 16
++#define KCOV_MAP_SIZE (1 << KCOV_MAP_SIZE_POW2)
++#define KCOV_AREA_SIZE KCOV_MAP_SIZE / sizeof(unsigned long)
++
++void kcov_hwiotrace_init(void);
++void kcov_hwiotrace_exit(void);
++#else
+ void kcov_task_init(struct task_struct *t);
+ void kcov_task_exit(struct task_struct *t);
++#endif
+ 
+ enum kcov_mode {
+ 	/* Coverage collection is not enabled yet. */
+@@ -18,10 +27,16 @@ enum kcov_mode {
+ 	 * Covered PCs are collected in a per-task buffer.
+ 	 */
+ 	KCOV_MODE_TRACE = 1,
++	KCOV_MODE_AFL = 2,
+ };
+ 
+ #else
+ 
++#ifdef CONFIG_HWIOTRACE
++static inline void kcov_hwiotrace_init() {}
++static inline void kcov_hwiotrace_exit() {}
++#endif
++
+ static inline void kcov_task_init(struct task_struct *t) {}
+ static inline void kcov_task_exit(struct task_struct *t) {}
+ 

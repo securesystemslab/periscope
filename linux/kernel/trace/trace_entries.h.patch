@@ -1,0 +1,67 @@
+diff --git a/kernel/trace/trace_entries.h b/kernel/trace/trace_entries.h
+index ee7b94a4810a..02e7e3ae517d 100644
+--- a/kernel/trace/trace_entries.h
++++ b/kernel/trace/trace_entries.h
+@@ -300,6 +300,62 @@ FTRACE_ENTRY(mmiotrace_map, trace_mmiotrace_map,
+ 	FILTER_OTHER
+ );
+ 
++FTRACE_ENTRY(hwiotrace_rw, trace_hwiotrace_rw,
++
++	TRACE_HWIO_RW,
++
++	F_STRUCT(
++		__field_struct(	struct hwiotrace_rw,	rw	)
++		__field_desc(	resource_size_t, rw,	phys	)
++		__field_desc(	unsigned long,	rw,	value	)
++		__field_desc(	unsigned long,	rw,	pc	)
++		__field_desc(	int, 		rw,	map_id	)
++		__field_desc(	unsigned char,	rw,	opcode	)
++		__field_desc(	unsigned char,	rw,	width	)
++	),
++
++	F_printk("%lx %lx %lx %d %x %x",
++		 (unsigned long)__entry->phys, __entry->value, __entry->pc,
++		 __entry->map_id, __entry->opcode, __entry->width),
++
++	FILTER_OTHER
++);
++
++FTRACE_ENTRY(hwiotrace_map, trace_hwiotrace_map,
++
++	TRACE_HWIO_MAP,
++
++	F_STRUCT(
++		__field_struct(	struct hwiotrace_map,	map	)
++		__field_desc(	resource_size_t, map,	phys	)
++		__field_desc(	unsigned long,	map,	virt	)
++		__field_desc(	unsigned long,	map,	len	)
++		__field_desc(	int, 		map,	map_id	)
++		__field_desc(	unsigned char,	map,	opcode	)
++	),
++
++	F_printk("%lx %lx %lx %d %x",
++		 (unsigned long)__entry->phys, __entry->virt, __entry->len,
++		 __entry->map_id, __entry->opcode),
++
++	FILTER_OTHER
++);
++
++FTRACE_ENTRY(hwiotrace_task, trace_hwiotrace_task,
++
++	TRACE_HWIO_TASK,
++
++	F_STRUCT(
++		__field_struct(	struct hwiotrace_task,	task	)
++		__field_desc(	int, 		task,	task_id	)
++		__field_desc(	unsigned char,	task,	opcode	)
++	),
++
++	F_printk("%d %x",
++		 __entry->task_id, __entry->opcode),
++
++	FILTER_OTHER
++);
+ 
+ #define TRACE_FUNC_SIZE 30
+ #define TRACE_FILE_SIZE 20

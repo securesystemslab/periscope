@@ -1,0 +1,29 @@
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index c520b0d107fb..d5a0400b685f 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -283,6 +283,24 @@ endmenu
+ 
+ menu "Kernel Features"
+ 
++config KHWIO_STREAMING_DMA
++	depends on HWIOTRACE
++	bool "trace streaming dma"
++	help
++	  Support streaming dma tracing
++
++config KHWIO_CONSISTENT_DMA
++	depends on HWIOTRACE
++	bool "trace consistent dma"
++	help
++	  Support consistent dma tracing
++
++config KHWIO_MMIO
++	depends on HWIOTRACE
++	bool "trace mmio"
++	help
++	  Support memory mapped io tracing
++
+ menu "ARM errata workarounds via the alternatives framework"
+ 
+ config ARM64_ERRATUM_826319

@@ -1,0 +1,14 @@
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 9dd4aadafc3c..a1e0b45cb9ce 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -387,7 +387,9 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
+ 
+ 	account_kernel_stack(ti, 1);
+ 
++#ifndef CONFIG_HWIOTRACE
+ 	kcov_task_init(tsk);
++#endif
+ 
+ 	return tsk;
+ 

@@ -1,0 +1,19 @@
+diff --git a/arch/arm64/mm/Makefile b/arch/arm64/mm/Makefile
+index 57f57fde5722..3f6243cc63e3 100644
+--- a/arch/arm64/mm/Makefile
++++ b/arch/arm64/mm/Makefile
+@@ -1,3 +1,7 @@
++KCOV_INSTRUMENT_kwhio.o := n
++KCOV_INSTRUMENT_hwio-mod.o := n
++KCOV_INSTRUMENT_decode.o := n
++
+ obj-y				:= dma-mapping.o extable.o fault.o init.o \
+ 				   cache.o copypage.o flush.o \
+ 				   ioremap.o mmap.o pgd.o mmu.o \
+@@ -7,3 +11,6 @@ obj-$(CONFIG_ARM64_PTDUMP)	+= dump.o
+ 
+ obj-$(CONFIG_KASAN)		+= kasan_init.o
+ KASAN_SANITIZE_kasan_init.o	:= n
++
++obj-$(CONFIG_HWIOTRACE)		+= hwiotrace.o decode.o
++hwiotrace-y			:= khwio.o hwio-mod.o

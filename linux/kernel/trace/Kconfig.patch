@@ -1,0 +1,31 @@
+diff --git a/kernel/trace/Kconfig b/kernel/trace/Kconfig
+index fc08ba9c1ed9..75941191c79c 100644
+--- a/kernel/trace/Kconfig
++++ b/kernel/trace/Kconfig
+@@ -572,6 +572,26 @@ config MMIOTRACE_TEST
+ 
+ 	  Say N, unless you absolutely know what you are doing.
+ 
++config HWIOTRACE
++	bool "HW IO tracing"
++	depends on PCI
++	select GENERIC_TRACER
++	help
++	  Hwiotrace traces HW I/O access and is meant for testing.
++	  Tracing is disabled by default and can be enabled at run-time.
++
++	  If you are not helping to develop drivers, say N.
++
++config HWIOFUZZ
++	bool "HW IO fuzzing"
++	depends on PCI
++	select GENERIC_TRACER
++	help
++	  Hwiofuzz fuzzes HW I/O access and is meant for testing.
++	  Fuzzing is disabled by default and can be enabled at run-time.
++
++	  If you are not helping to develop drivers, say N.
++
+ config TRACEPOINT_BENCHMARK
+         bool "Add tracepoint that benchmarks tracepoints"
+ 	help

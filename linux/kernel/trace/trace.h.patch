@@ -1,0 +1,35 @@
+diff --git a/kernel/trace/trace.h b/kernel/trace/trace.h
+index e1265f95457f..40355b1c6a4f 100644
+--- a/kernel/trace/trace.h
++++ b/kernel/trace/trace.h
+@@ -8,6 +8,7 @@
+ #include <linux/clocksource.h>
+ #include <linux/ring_buffer.h>
+ #include <linux/mmiotrace.h>
++#include <linux/hwiotrace.h>
+ #include <linux/tracepoint.h>
+ #include <linux/ftrace.h>
+ #include <linux/hw_breakpoint.h>
+@@ -32,6 +33,9 @@ enum trace_type {
+ 	TRACE_BPRINT,
+ 	TRACE_MMIO_RW,
+ 	TRACE_MMIO_MAP,
++	TRACE_HWIO_RW,
++	TRACE_HWIO_MAP,
++	TRACE_HWIO_TASK,
+ 	TRACE_BRANCH,
+ 	TRACE_GRAPH_RET,
+ 	TRACE_GRAPH_ENT,
+@@ -320,6 +324,12 @@ extern void __ftrace_bad_type(void);
+ 			  TRACE_MMIO_RW);				\
+ 		IF_ASSIGN(var, ent, struct trace_mmiotrace_map,		\
+ 			  TRACE_MMIO_MAP);				\
++		IF_ASSIGN(var, ent, struct trace_hwiotrace_rw,		\
++			  TRACE_HWIO_RW);				\
++		IF_ASSIGN(var, ent, struct trace_hwiotrace_map,		\
++			  TRACE_HWIO_MAP);				\
++		IF_ASSIGN(var, ent, struct trace_hwiotrace_task,	\
++			  TRACE_HWIO_TASK);				\
+ 		IF_ASSIGN(var, ent, struct trace_branch, TRACE_BRANCH); \
+ 		IF_ASSIGN(var, ent, struct ftrace_graph_ent_entry,	\
+ 			  TRACE_GRAPH_ENT);		\

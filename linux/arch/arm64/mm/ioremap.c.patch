@@ -1,0 +1,112 @@
+diff --git a/arch/arm64/mm/ioremap.c b/arch/arm64/mm/ioremap.c
+index 01e88c8bcab0..4b1cd6448df3 100644
+--- a/arch/arm64/mm/ioremap.c
++++ b/arch/arm64/mm/ioremap.c
+@@ -24,11 +24,60 @@
+ #include <linux/mm.h>
+ #include <linux/vmalloc.h>
+ #include <linux/io.h>
++#include <linux/kallsyms.h>
++#include <linux/module.h>
++#include <linux/hwiotrace.h>
+ 
+ #include <asm/fixmap.h>
+ #include <asm/tlbflush.h>
+ #include <asm/pgalloc.h>
+ 
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_MMIO)
++static void __iomem *__ioremap_caller_khwio(phys_addr_t phys_addr, size_t size,
++				      pgprot_t prot, void *caller)
++{
++	unsigned long last_addr;
++	unsigned long offset = phys_addr & ~PAGE_MASK;
++	int err;
++	unsigned long addr;
++	struct vm_struct *area;
++
++	/*
++	 * Page align the mapping address and size, taking account of any
++	 * offset.
++	 */
++	phys_addr &= PAGE_MASK;
++	size = PAGE_ALIGN(size + offset);
++
++	/*
++	 * Don't allow wraparound, zero size or outside PHYS_MASK.
++	 */
++	last_addr = phys_addr + size - 1;
++	if (!size || last_addr < phys_addr || (last_addr & ~PHYS_MASK))
++		return NULL;
++
++	area = get_vm_area_caller(size, VM_IOREMAP, caller);
++	if (!area)
++		return NULL;
++	addr = (unsigned long)area->addr;
++
++	err = ioremap_page_range(addr, addr + size, phys_addr, prot);
++	if (err) {
++		vunmap((void *)addr);
++		return NULL;
++	}
++
++	return (void __iomem *)(offset + addr);
++}
++void __iomem *__ioremap_khwio(phys_addr_t phys_addr, size_t size, pgprot_t prot)
++{
++	return __ioremap_caller_khwio(phys_addr, size, prot,
++				__builtin_return_address(0));
++}
++EXPORT_SYMBOL(__ioremap_khwio);
++#endif
++
++
+ static void __iomem *__ioremap_caller(phys_addr_t phys_addr, size_t size,
+ 				      pgprot_t prot, void *caller)
+ {
+@@ -37,6 +86,9 @@ static void __iomem *__ioremap_caller(phys_addr_t phys_addr, size_t size,
+ 	int err;
+ 	unsigned long addr;
+ 	struct vm_struct *area;
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_MMIO)
++	char some_name[KSYM_SYMBOL_LEN * 2];
++#endif
+ 
+ 	/*
+ 	 * Page align the mapping address and size, taking account of any
+@@ -70,6 +122,20 @@ static void __iomem *__ioremap_caller(phys_addr_t phys_addr, size_t size,
+ 		return NULL;
+ 	}
+ 
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_MMIO)
++	if(hwio_get_some_name(some_name) == 0) {
++		unsigned long paddr = offset + addr;
++		if(register_hwiotrace_probe(some_name, (void *)paddr, size, MMIO) != 0) {
++#if 0
++			pr_err("Error register_hwiotrace_probe(%s, 0x%lx, 0x%lx)\n",
++				some_name, paddr, size);
++#endif
++		}
++	} else {
++		pr_err("Error __ioremap could not get name to register probe\n");
++	}
++#endif
++
+ 	return (void __iomem *)(offset + addr);
+ }
+ 
+@@ -84,6 +150,15 @@ void __iounmap(volatile void __iomem *io_addr)
+ {
+ 	unsigned long addr = (unsigned long)io_addr & PAGE_MASK;
+ 
++#if defined(CONFIG_HWIOTRACE) && defined(CONFIG_KHWIO_MMIO)
++	// we can not match on name
++	if(unregister_hwiotrace_probe(NULL, (void *)addr) != 0) {
++#if 0
++		pr_err("Error unregister_hwiotrace_probe((null), 0x%lx)\n", addr);
++#endif
++	}
++#endif
++
+ 	/*
+ 	 * We could get an address outside vmalloc range in case
+ 	 * of ioremap_cache() reusing a RAM mapping.

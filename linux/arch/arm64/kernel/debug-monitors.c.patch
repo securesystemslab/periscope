@@ -1,0 +1,36 @@
+diff --git a/arch/arm64/kernel/debug-monitors.c b/arch/arm64/kernel/debug-monitors.c
+index 6de6d9f43b95..a45e02459b70 100644
+--- a/arch/arm64/kernel/debug-monitors.c
++++ b/arch/arm64/kernel/debug-monitors.c
+@@ -21,6 +21,7 @@
+ #include <linux/cpu.h>
+ #include <linux/debugfs.h>
+ #include <linux/hardirq.h>
++#include <linux/hwiotrace.h>
+ #include <linux/init.h>
+ #include <linux/ptrace.h>
+ #include <linux/kprobes.h>
+@@ -261,6 +262,10 @@ static int single_step_handler(unsigned long addr, unsigned int esr,
+ 		 */
+ 		user_rewind_single_step(current);
+ 	} else {
++#ifdef CONFIG_HWIOTRACE
++		if (khwio_single_step_handler(regs, esr) == DBG_HOOK_HANDLED)
++			return 0;
++#endif
+ #ifdef	CONFIG_KPROBES
+ 		if (kprobe_single_step_handler(regs, esr) == DBG_HOOK_HANDLED)
+ 			return 0;
+@@ -333,6 +338,12 @@ static int brk_handler(unsigned long addr, unsigned int esr,
+ 
+ 		force_sig_info(SIGTRAP, &info, current);
+ 	}
++#ifdef CONFIG_HWIOTRACE
++	else if ((esr & BRK64_ESR_HWIO_MASK) == BRK64_ESR_HWIO_PROBES) {
++		if (khwio_breakpoint_handler(regs, esr) != DBG_HOOK_HANDLED)
++			return -EFAULT;
++	}
++#endif
+ #ifdef	CONFIG_KPROBES
+ 	else if ((esr & BRK64_ESR_MASK) == BRK64_ESR_KPROBES) {
+ 		if (kprobe_breakpoint_handler(regs, esr) != DBG_HOOK_HANDLED)

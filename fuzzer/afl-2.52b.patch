@@ -1,0 +1,148 @@
+diff --git a/Makefile b/Makefile
+index 0b2c92b..8648c68 100644
+--- a/Makefile
++++ b/Makefile
+@@ -27,7 +27,7 @@ MISC_PATH   = $(PREFIX)/share/afl
+ PROGS       = afl-gcc afl-fuzz afl-showmap afl-tmin afl-gotcpu afl-analyze
+ SH_PROGS    = afl-plot afl-cmin afl-whatsup
+ 
+-CFLAGS     ?= -O3 -funroll-loops
++CFLAGS     ?= $(ADDCFLAGS) -O3 -funroll-loops
+ CFLAGS     += -Wall -D_FORTIFY_SOURCE=2 -g -Wno-pointer-sign \
+ 	      -DAFL_PATH=\"$(HELPER_PATH)\" -DDOC_PATH=\"$(DOC_PATH)\" \
+ 	      -DBIN_PATH=\"$(BIN_PATH)\"
+diff --git a/afl-cmin b/afl-cmin
+index bc3494e..7cfbe88 100755
+--- a/afl-cmin
++++ b/afl-cmin
+@@ -1,4 +1,4 @@
+-#!/usr/bin/env bash
++#!/data/local/tmp/bash
+ #
+ # american fuzzy lop - corpus minimization tool
+ # ---------------------------------------------
+diff --git a/afl-fuzz.c b/afl-fuzz.c
+index 01b4afe..1c72de8 100644
+--- a/afl-fuzz.c
++++ b/afl-fuzz.c
+@@ -56,6 +56,8 @@
+ #include <sys/ioctl.h>
+ #include <sys/file.h>
+ 
++#include "../ashmem.h"
++
+ #if defined(__APPLE__) || defined(__FreeBSD__) || defined (__OpenBSD__)
+ #  include <sys/sysctl.h>
+ #endif /* __APPLE__ || __FreeBSD__ || __OpenBSD__ */
+@@ -1200,7 +1202,7 @@ static inline void classify_counts(u32* mem) {
+ 
+ static void remove_shm(void) {
+ 
+-  shmctl(shm_id, IPC_RMID, NULL);
++  ashmctl(shm_id, IPC_RMID, NULL);
+ 
+ }
+ 
+@@ -1348,7 +1350,7 @@ EXP_ST void setup_shm(void) {
+   memset(virgin_tmout, 255, MAP_SIZE);
+   memset(virgin_crash, 255, MAP_SIZE);
+ 
+-  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
++  shm_id = ashmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
+ 
+   if (shm_id < 0) PFATAL("shmget() failed");
+ 
+@@ -1365,7 +1367,7 @@ EXP_ST void setup_shm(void) {
+ 
+   ck_free(shm_str);
+ 
+-  trace_bits = shmat(shm_id, NULL, 0);
++  trace_bits = ashmat(shm_id, NULL, 0);
+   
+   if (!trace_bits) PFATAL("shmat() failed");
+ 
+@@ -2553,7 +2555,7 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
+   q->cal_failed++;
+ 
+   stage_name = "calibration";
+-  stage_max  = fast_cal ? 3 : CAL_CYCLES;
++  stage_max  = fast_cal ? 1 : CAL_CYCLES;
+ 
+   /* Make sure the forkserver is up before we do anything, and let's not
+      count its spin-up time toward binary calibration. */
+@@ -2601,7 +2603,7 @@ static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
+           if (!var_bytes[i] && first_trace[i] != trace_bits[i]) {
+ 
+             var_bytes[i] = 1;
+-            stage_max    = CAL_CYCLES_LONG;
++            stage_max    = fast_cal ? 4 : CAL_CYCLES_LONG;
+ 
+           }
+ 
+diff --git a/afl-showmap.c b/afl-showmap.c
+index df3f7cd..cb49121 100644
+--- a/afl-showmap.c
++++ b/afl-showmap.c
+@@ -46,6 +46,8 @@
+ #include <sys/types.h>
+ #include <sys/resource.h>
+ 
++#include "../ashmem.h"
++
+ static s32 child_pid;                 /* PID of the tested program         */
+ 
+ static u8* trace_bits;                /* SHM with instrumentation bitmap   */
+@@ -130,7 +132,7 @@ static void classify_counts(u8* mem, const u8* map) {
+ 
+ static void remove_shm(void) {
+ 
+-  shmctl(shm_id, IPC_RMID, NULL);
++  ashmctl(shm_id, IPC_RMID, NULL);
+ 
+ }
+ 
+@@ -141,7 +143,7 @@ static void setup_shm(void) {
+ 
+   u8* shm_str;
+ 
+-  shm_id = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
++  shm_id = ashmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | IPC_EXCL | 0600);
+ 
+   if (shm_id < 0) PFATAL("shmget() failed");
+ 
+@@ -153,7 +155,7 @@ static void setup_shm(void) {
+ 
+   ck_free(shm_str);
+ 
+-  trace_bits = shmat(shm_id, NULL, 0);
++  trace_bits = ashmat(shm_id, NULL, 0);
+   
+   if (!trace_bits) PFATAL("shmat() failed");
+ 
+diff --git a/config.h b/config.h
+index e74b3b3..3910efb 100644
+--- a/config.h
++++ b/config.h
+@@ -193,8 +193,8 @@
+ 
+ /* Fuzzer stats file and plot update intervals (sec): */
+ 
+-#define STATS_UPDATE_SEC    60
+-#define PLOT_UPDATE_SEC     5
++#define STATS_UPDATE_SEC    60 / 6
++#define PLOT_UPDATE_SEC     5 / 5
+ 
+ /* Smoothing divisor for CPU load and exec speed stats (1 - no smoothing). */
+ 
+diff --git a/debug.h b/debug.h
+index a943a57..8ec87eb 100644
+--- a/debug.h
++++ b/debug.h
+@@ -239,6 +239,7 @@
+ #define ck_write(fd, buf, len, fn) do { \
+     u32 _len = (len); \
+     s32 _res = write(fd, buf, _len); \
++    fsync(fd); \
+     if (_res != _len) RPFATAL(_res, "Short write to %s", fn); \
+   } while (0)
+ 

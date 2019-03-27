@@ -1,0 +1,59 @@
+diff --git a/arch/arm64/mm/fault.c b/arch/arm64/mm/fault.c
+index 05dc4e83a4e5..e13cd790518f 100644
+--- a/arch/arm64/mm/fault.c
++++ b/arch/arm64/mm/fault.c
+@@ -24,6 +24,7 @@
+ #include <linux/hardirq.h>
+ #include <linux/init.h>
+ #include <linux/kprobes.h>
++#include <linux/hwiotrace.h>
+ #include <linux/uaccess.h>
+ #include <linux/page-flags.h>
+ #include <linux/sched.h>
+@@ -164,12 +165,46 @@ static bool is_el1_instruction_abort(unsigned int esr)
+ 	return ESR_ELx_EC(esr) == ESR_ELx_EC_IABT_CUR;
+ }
+ 
++/*
++ * Returns 0 if hwiotrace is disabled, or if the fault is not
++ * handled by hwiotrace:
++ */
++#ifdef CONFIG_HWIOTRACE
++#define TRACE_KHWIO_FAULT 0
++static inline int
++khwio_fault(struct pt_regs *regs, unsigned long addr)
++{
++	if (unlikely(is_khwio_active())) {
++#if TRACE_KHWIO_FAULT
++		printk("[hwio] khwio_fault is_khwio_active\n");
++		dump_stack();
++#endif
++		if (khwio_handler(regs, addr) == 1) {
++#if TRACE_KHWIO_FAULT
++			printk("[hwio] khwio_fault khwio_handler(regs, addr)=1\n");
++#endif
++			return -1;
++		}
++	}
++	return 0;
++}
++#else
++static inline int
++khwio_fault(struct pt_regs *regs, unsigned long addr)
++{
++	return 0;
++}
++#endif
++
+ /*
+  * The kernel tried to access some page that wasn't present.
+  */
+ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
+ 			      unsigned int esr, struct pt_regs *regs)
+ {
++	if (unlikely(khwio_fault(regs, addr)))
++		return;
++
+ 	/*
+ 	 * Are we prepared to handle this kernel fault?
+ 	 * We are almost certainly not prepared to handle instruction faults.

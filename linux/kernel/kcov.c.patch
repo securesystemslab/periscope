@@ -1,0 +1,275 @@
+diff --git a/kernel/kcov.c b/kernel/kcov.c
+index 3efbee0..0a0cbfb 100644
+--- a/kernel/kcov.c
++++ b/kernel/kcov.c
+@@ -4,6 +4,7 @@
+ #include <linux/types.h>
+ #include <linux/file.h>
+ #include <linux/fs.h>
++#include <linux/hash.h>
+ #include <linux/mm.h>
+ #include <linux/printk.h>
+ #include <linux/slab.h>
+@@ -33,12 +34,164 @@ struct kcov {
+ 	enum kcov_mode		mode;
+ 	/* Size of arena (in long's for KCOV_MODE_TRACE). */
+ 	unsigned		size;
++
++	union {
++		/* For KCOV_MODE_AFL */
++		struct {
++			/* (number of bytes) - 1, where number of
++			 * bytes must be a power of 2. */
++			unsigned int mask;
++
++			/* Previous PC (for KCOV_MODE_AFL). */
++			unsigned int prev_location;
++		};
++	};
++
+ 	/* Coverage buffer shared with user space. */
+ 	void			*area;
++
++#ifndef CONFIG_HWIOTRACE
+ 	/* Task for which we collect coverage, or NULL. */
+ 	struct task_struct	*t;
++#endif
+ };
+ 
++#ifdef CONFIG_HWIOTRACE
++static struct kcov *kcov_hwiotrace;
++static void *kcov_area;
++static bool kcov_active;
++
++static inline unsigned long canonicalize_ip(unsigned long ip)
++{
++#ifdef CONFIG_RANDOMIZE_BASE
++	//ip -= kaslr_offset(); // FIXME: should be per-module
++#endif
++	return ip;
++}
++
++#define FF(_b) (0xff << ((_b) << 3))
++
++static u32 count_bytes(u8 *mem) {
++	u32 *ptr = (u32 *)mem;
++	u32 i = (KCOV_MAP_SIZE >> 2);
++	u32 ret = 0;
++
++	while (i--) {
++		u32 v = *(ptr++);
++
++		if (!v) continue;
++		if (v & FF(0)) ret++;
++		if (v & FF(1)) ret++;
++		if (v & FF(2)) ret++;
++		if (v & FF(3)) ret++;
++	}
++	return ret;
++}
++
++#define KCOV_HWIOTRACE_SHIFT 56
++#define KCOV_HWIOTRACE_MASK ~((1UL << KCOV_HWIOTRACE_SHIFT) - 1)
++#define KCOV_HWIOTRACE_UNKNOWN 0x0UL << KCOV_HWIOTRACE_SHIFT
++#define KCOV_HWIOTRACE_HARDIRQ 0x1UL << KCOV_HWIOTRACE_SHIFT
++#define KCOV_HWIOTRACE_SOFTIRQ 0x2UL << KCOV_HWIOTRACE_SHIFT
++#define KCOV_HWIOTRACE_KWORKER 0x3UL << KCOV_HWIOTRACE_SHIFT
++#define KCOV_HWIOTRACE_KTHREAD 0x4UL << KCOV_HWIOTRACE_SHIFT
++#define KCOV_HWIOTRACE_UTHREAD 0x5UL << KCOV_HWIOTRACE_SHIFT
++
++void __sanitizer_cov_trace_pc(void)
++{
++	unsigned long location = canonicalize_ip(_RET_IP_);
++	struct kcov *kcov = kcov_hwiotrace;
++
++	if (!kcov)
++		return;
++
++	if (!kcov_area)
++		return;
++
++	/* BB coverage represented as an array of instruction pointers */
++	if (kcov->mode == KCOV_MODE_TRACE) {
++		unsigned long *area = kcov_area;
++		unsigned long pos;
++		unsigned long flag = KCOV_HWIOTRACE_UNKNOWN;
++
++		if (in_irq()) {
++			flag = KCOV_HWIOTRACE_HARDIRQ;
++		}
++		else if (in_softirq()) {
++			flag = KCOV_HWIOTRACE_SOFTIRQ;
++		}
++		else if (current) {
++			if (current->flags & PF_WQ_WORKER) {
++				flag = KCOV_HWIOTRACE_KWORKER;
++			}
++			else if (current->flags & PF_KTHREAD) {
++				flag = KCOV_HWIOTRACE_KTHREAD;
++			}
++			else {
++				// conservatively say it's a user thread
++				flag = KCOV_HWIOTRACE_UTHREAD;
++			}
++		}
++
++		/* The first word is number of subsequent PCs. */
++		pos = READ_ONCE(area[0]) + 1;
++		if (likely(pos < kcov->size)) {
++			area[pos] = _RET_IP_ & ~KCOV_HWIOTRACE_MASK;
++			area[pos] |= flag;
++			WRITE_ONCE(area[0], pos);
++		}
++	}
++	/* AFL-style edge coverage */
++	else if (kcov->mode == KCOV_MODE_AFL) {
++		unsigned char *area;
++
++		if (!kcov_active)
++			return;
++
++		area = kcov_area;
++
++		++area[(kcov->prev_location ^ location) & kcov->mask];
++		kcov->prev_location = hash_long(location, BITS_PER_LONG);
++	}
++}
++EXPORT_SYMBOL(__sanitizer_cov_trace_pc);
++
++void kcov_hwiotrace_init(void)
++{
++	struct kcov *kcov = kcov_hwiotrace;
++
++	if (!kcov) {
++		return;
++	}
++
++	kcov_active = true;
++
++	if (!kcov_area) {
++		return;
++	}
++
++	memset(kcov_area, 0, KCOV_MAP_SIZE);
++
++	pr_info("kcov_hwiotrace_init kcov=%p kcov->area=%p count=%u\n", kcov, kcov_area, count_bytes(kcov_area));
++}
++
++void kcov_hwiotrace_exit(void)
++{
++	struct kcov *kcov = kcov_hwiotrace;
++
++	if (!kcov) {
++		return;
++	}
++
++	kcov_active = false;
++
++	if (!kcov_area) {
++		return;
++	}
++
++	pr_info("kcov_hwiotrace_exit kcov=%p kcov_area=%p count=%u\n", kcov, kcov_area, count_bytes(kcov_area));
++}
++#else
+ /*
+  * Entry point from instrumented code.
+  * This is called once per basic-block/edge.
+@@ -78,6 +231,7 @@ void __sanitizer_cov_trace_pc(void)
+ 	}
+ }
+ EXPORT_SYMBOL(__sanitizer_cov_trace_pc);
++#endif
+ 
+ static void kcov_get(struct kcov *kcov)
+ {
+@@ -87,11 +241,18 @@ static void kcov_get(struct kcov *kcov)
+ static void kcov_put(struct kcov *kcov)
+ {
+ 	if (atomic_dec_and_test(&kcov->refcount)) {
++#ifdef CONFIG_HWIOTRACE
++		kcov_active = false;
++		kcov_hwiotrace = NULL;
++		kcov_area = NULL;
++#endif
++
+ 		vfree(kcov->area);
+ 		kfree(kcov);
+ 	}
+ }
+ 
++#ifndef CONFIG_HWIOTRACE
+ void kcov_task_init(struct task_struct *t)
+ {
+ 	t->kcov_mode = KCOV_MODE_DISABLED;
+@@ -118,6 +279,7 @@ void kcov_task_exit(struct task_struct *t)
+ 	spin_unlock(&kcov->lock);
+ 	kcov_put(kcov);
+ }
++#endif
+ 
+ static int kcov_mmap(struct file *filep, struct vm_area_struct *vma)
+ {
+@@ -177,11 +339,46 @@ static int kcov_close(struct inode *inode, struct file *filep)
+ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 			     unsigned long arg)
+ {
++#ifndef CONFIG_HWIOTRACE
+ 	struct task_struct *t;
++#endif
+ 	unsigned long size, unused;
+ 
+ 	switch (cmd) {
++#ifdef CONFIG_HWIOTRACE
++	case KCOV_INIT_HWIOTRACE:
++		if (kcov->mode != KCOV_MODE_DISABLED)
++			return -EBUSY;
++		size = arg;
++		if (size < 2 || size > INT_MAX / sizeof(unsigned long))
++			return -EINVAL;
++		kcov->size = size;
++		kcov->mask = (size * sizeof(unsigned long)) - 1;
++		kcov->prev_location = hash_long(0, BITS_PER_LONG);
++		kcov->mode = KCOV_MODE_AFL;
++		return 0;
++	case KCOV_ENABLE_HWIOTRACE:
++		unused = arg;
++		if (unused != 0 || kcov->mode == KCOV_MODE_DISABLED ||
++			kcov->area == NULL)
++			return -EINVAL;
++		kcov_hwiotrace = kcov;
++		kcov_area = kcov->area;
++		kcov_get(kcov);
++		return 0;
++	case KCOV_DISABLE_HWIOTRACE:
++		unused = arg;
++		if (unused != 0)
++			return -EINVAL;
++		kcov_hwiotrace = NULL;
++		kcov_area = NULL;
++		kcov_active = false;
++		kcov_put(kcov);
++		return 0;
++#endif
+ 	case KCOV_INIT_TRACE:
++		pr_info("kcov_ioctl: KCOV_INIT_TRACE arg=%lu\n", arg);
++
+ 		/*
+ 		 * Enable kcov in trace mode and setup buffer size.
+ 		 * Must happen before anything else.
+@@ -199,6 +396,7 @@ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 		kcov->size = size;
+ 		kcov->mode = KCOV_MODE_TRACE;
+ 		return 0;
++#ifndef CONFIG_HWIOTRACE
+ 	case KCOV_ENABLE:
+ 		/*
+ 		 * Enable coverage for the current task.
+@@ -237,6 +435,7 @@ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 		kcov->t = NULL;
+ 		kcov_put(kcov);
+ 		return 0;
++#endif
+ 	default:
+ 		return -ENOTTY;
+ 	}

@@ -1,0 +1,16 @@
+diff --git a/arch/arm64/include/asm/debug-monitors.h b/arch/arm64/include/asm/debug-monitors.h
+index 4b6b3f72a215..6054b98cb59b 100644
+--- a/arch/arm64/include/asm/debug-monitors.h
++++ b/arch/arm64/include/asm/debug-monitors.h
+@@ -66,6 +66,11 @@
+ 
+ #define CACHE_FLUSH_IS_SAFE		1
+ 
++/* hwiotrace BRK opcodes with ESR encoding */
++#define BRK64_ESR_HWIO_MASK     0xFFFF
++#define BRK64_ESR_HWIO_PROBES   0x0005
++#define BRK64_OPCODE_HWIO_PROBES (AARCH64_BREAK_MON | (BRK64_ESR_HWIO_PROBE << 5))
++
+ /* kprobes BRK opcodes with ESR encoding  */
+ #define BRK64_ESR_MASK		0xFFFF
+ #define BRK64_ESR_KPROBES	0x0004

@@ -1,0 +1,14 @@
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 4ed83a1e0e8a..053da43626c1 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -670,7 +670,9 @@ void do_exit(long code)
+ 	TASKS_RCU(int tasks_rcu_i);
+ 
+ 	profile_task_exit(tsk);
++#ifndef CONFIG_HWIOTRACE
+ 	kcov_task_exit(tsk);
++#endif
+ 
+ 	WARN_ON(blk_needs_flush_plug(tsk));
+ 

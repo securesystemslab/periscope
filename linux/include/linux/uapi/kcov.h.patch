@@ -1,0 +1,15 @@
+diff --git a/include/uapi/linux/kcov.h b/include/uapi/linux/kcov.h
+index 574e22e..125cadd 100644
+--- a/include/uapi/linux/kcov.h
++++ b/include/uapi/linux/kcov.h
+@@ -4,7 +4,10 @@
+ #include <linux/types.h>
+ 
+ #define KCOV_INIT_TRACE			_IOR('c', 1, unsigned long)
++#define KCOV_INIT_HWIOTRACE		_IOR('c', 2, unsigned long)
+ #define KCOV_ENABLE			_IO('c', 100)
+ #define KCOV_DISABLE			_IO('c', 101)
++#define KCOV_ENABLE_HWIOTRACE		_IO('c', 102)
++#define KCOV_DISABLE_HWIOTRACE		_IO('c', 103)
+ 
+ #endif /* _LINUX_KCOV_IOCTLS_H */
